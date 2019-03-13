@@ -4,10 +4,15 @@ namespace App\Repository;
 
 use App\Entity\Act;
 use App\Entity\CategoryInterface;
+use App\Entity\ECommerceTag;
 use App\Entity\Product;
+use App\Utils\CategoryHelper;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Knp\Component\Pager\Pagination\PaginationInterface;
 use Knp\Component\Pager\Paginator;
+use Doctrine\ORM\Query;
+use Pagerfanta\Adapter\DoctrineORMAdapter;
+use Pagerfanta\Pagerfanta;
 use Symfony\Bridge\Doctrine\RegistryInterface;
 
 /**
@@ -179,7 +184,7 @@ class ProductRepository extends ServiceEntityRepository
 
             ->getQuery()
             ->getResult()
-        ;
+            ;
     }
 
     public function countNotConfirmedPurchase(Product $product)
@@ -230,5 +235,51 @@ class ProductRepository extends ServiceEntityRepository
         ;
 
         return $confirmedPurchaseQty - $supplyQty;
+    }
+
+    /**
+     * @throws
+     */
+    public function findLatest(int $page = 1): Pagerfanta
+    {
+        $qb = $this->createQueryBuilder('p')
+            ->orderBy('p.id', 'DESC')
+        ;
+
+        return $this->createPaginator($qb->getQuery(), $page);
+    }
+
+    public function findByCategoryLatest(CategoryInterface $category, int $page = 1): Pagerfanta
+    {
+        $qb = $this->createQueryBuilder('p')
+            ->andWhere('p.eCommerceCategory IN(:category)')
+            ->setParameter('category', array_map(function (CategoryInterface $category) {
+                return $category->getId();
+            }, (new CategoryHelper())->getNested($category)))
+            ->orderBy('p.id', 'DESC')
+        ;
+
+        return $this->createPaginator($qb->getQuery(), $page);
+    }
+
+    public function findByTagLatest(ECommerceTag $tag, int $page = 1): Pagerfanta
+    {
+        $qb = $this->createQueryBuilder('p')
+            ->join('p.eCommerceTags', 'tag')
+            ->andWhere('tag.id = :tag')
+            ->setParameter('tag', $tag->getId())
+            ->orderBy('p.id', 'DESC')
+        ;
+
+        return $this->createPaginator($qb->getQuery(), $page);
+    }
+
+    private function createPaginator(Query $query, int $page): Pagerfanta
+    {
+        $paginator = new Pagerfanta(new DoctrineORMAdapter($query));
+        $paginator->setMaxPerPage(16);
+        $paginator->setCurrentPage($page);
+
+        return $paginator;
     }
 }
